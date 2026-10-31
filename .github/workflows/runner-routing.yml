@@ -16,8 +16,11 @@ name: Runner routing
 #
 # The repo variable RUNNER_FORCE overrides everything: `pc` or `github`.
 #
-# This is the organization's shared copy; commodity, famille,
-# hillvalleyrealestate and lewine still call their own identical copy.
+# This is the organization's shared copy, called by famille,
+# hillvalleyrealestate and lewine. commodity keeps its own identical copy
+# for now: its evidence manifests and ORCHESTRATOR_CORE.md cite that file by
+# line. A called workflow reads the caller's variables, so PC_RUNNER_VU and
+# RUNNER_FORCE stay per repository (heartbeat.ps1 keeps its repo list).
 #
 # Usage in a workflow of any v0lt-systems repository:
 #   jobs:

@@ -25,7 +25,7 @@ jobs:
 
 The switches are the organization variable `CI_RUNNER` (JSON for `runs-on`; set it to `"ubuntu-latest"` while the PC is off), the repository variable `RUNNER_FORCE` (`pc` or `github`) and `PC_RUNNER_VU`, the heartbeat the PC rewrites every minute. The header of the workflow explains the order.
 
-commodity, famille, hillvalleyrealestate and lewine still carry their own copy (`./.github/workflows/runner-routing.yml`), identical to this one.
+famille, hillvalleyrealestate and lewine call this copy. commodity still carries its own identical one, because its evidence manifests cite that file by line. A called workflow reads the caller's variables, so `PC_RUNNER_VU` and `RUNNER_FORCE` stay per repository: a repository that adopts this workflow must be added to the PC heartbeat's list.
 
 ## Dependabot auto-merge (opt-in)
 
