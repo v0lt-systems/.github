@@ -1,0 +1,6 @@
+{
+  "name": "V0LT CI (self-hosted, ci-ok)",
+  "description": "Jobs on the PC's self-hosted runners, GitHub-hosted when it is off, summed up in the ci-ok check the organization ruleset requires.",
+  "iconName": "octicon check-circle",
+  "categories": ["Continuous integration"]
+}

@@ -1,0 +1,13 @@
+name: Dependabot auto-merge
+
+# Squash-merges Dependabot patch and minor updates once ci-ok passes.
+# Do not add it where merging to the default branch is the production gate.
+
+on: pull_request
+
+jobs:
+  automerge:
+    uses: v0lt-systems/.github/.github/workflows/dependabot-automerge.yml@main
+    permissions:
+      contents: write
+      pull-requests: write

@@ -1,0 +1,48 @@
+name: CI
+
+# V0LT Systems CI skeleton: jobs on the PC's self-hosted runners, GitHub-hosted
+# when it is off (runner-routing), and one `ci-ok` check that sums them up.
+# The organization ruleset "Default branch: ci-ok green, via pull request"
+# requires `ci-ok`, so keep that job name and list every gate under `needs`.
+
+on:
+  push:
+    branches: [$default-branch]
+  pull_request:
+    branches: [$default-branch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  routing:
+    uses: v0lt-systems/.github/.github/workflows/runner-routing.yml@main
+
+  test:
+    name: Lint · Test · Build
+    needs: routing
+    runs-on: ${{ fromJSON(needs.routing.outputs.runner) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # Replace with the repository's own steps.
+      - run: echo "lint, test and build here"
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [routing, test]
+    runs-on: ${{ fromJSON(needs.routing.outputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 2
+    steps:
+      - name: Every gate passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "::error::a gate ended $r"; exit 1; }
+          done

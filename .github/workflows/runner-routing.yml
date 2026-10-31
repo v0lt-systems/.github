@@ -1,0 +1,72 @@
+name: Runner routing
+
+# Picks the runner for the calling workflow's jobs: the RTX 4090's
+# self-hosted `pc-gaming` runners by default, GitHub-hosted `ubuntu-latest`
+# as the fallback when the PC is off.
+#
+# The decision no longer needs a GitHub-hosted job: this job itself runs on
+# the PC unless the variable CI_RUNNER (org or repo, JSON for runs-on, e.g.
+# "ubuntu-latest") says otherwise. CI_RUNNER is the one switch shared by
+# every v0lt-systems repo; set it to "ubuntu-latest" when the PC is off.
+#
+# When this job runs GitHub-hosted, the repo variable PC_RUNNER_VU still
+# decides: a UTC ISO-8601 timestamp that a scheduled task on the PC rewrites
+# every minute while its runners are online. Fresher than 3 minutes sends the
+# jobs back to the PC.
+#
+# The repo variable RUNNER_FORCE overrides everything: `pc` or `github`.
+#
+# This is the organization's shared copy; commodity, famille,
+# hillvalleyrealestate and lewine still call their own identical copy.
+#
+# Usage in a workflow of any v0lt-systems repository:
+#   jobs:
+#     routing:
+#       uses: v0lt-systems/.github/.github/workflows/runner-routing.yml@main
+#     my-job:
+#       needs: routing
+#       runs-on: ${{ fromJSON(needs.routing.outputs.runner) }}
+
+on:
+  workflow_call:
+    outputs:
+      runner:
+        description: JSON runner spec for runs-on
+        value: ${{ jobs.choose.outputs.runner }}
+
+permissions: {}
+
+jobs:
+  choose:
+    runs-on: ${{ vars.RUNNER_FORCE == 'github' && 'ubuntu-latest' || vars.RUNNER_FORCE == 'pc' && fromJSON('["self-hosted","pc-gaming"]') || fromJSON(vars.CI_RUNNER || '["self-hosted","pc-gaming"]') }}
+    timeout-minutes: 2
+    outputs:
+      runner: ${{ steps.choice.outputs.runner }}
+    steps:
+      - id: choice
+        env:
+          SEEN: ${{ vars.PC_RUNNER_VU }}
+          FORCE: ${{ vars.RUNNER_FORCE }}
+          CI_RUNNER: ${{ vars.CI_RUNNER }}
+          WHERE: ${{ runner.environment }}
+        run: |
+          pc='["self-hosted","pc-gaming"]'
+          hosted='"ubuntu-latest"'
+          age=''
+          if [ -n "$SEEN" ]; then
+            age=$(( $(date -u +%s) - $(date -u -d "$SEEN" +%s) )) || age=''
+          fi
+          case "$FORCE" in
+            pc) runner=$pc; why="RUNNER_FORCE=pc" ;;
+            github) runner=$hosted; why="RUNNER_FORCE=github" ;;
+            *)
+              if [ "$WHERE" != github-hosted ]; then
+                runner=$pc; why="routing ran on the PC"
+              elif [ -n "$age" ] && [ "$age" -lt 180 ]; then
+                runner=$pc; why="PC seen ${age}s ago"
+              else
+                runner=${CI_RUNNER:-$hosted}; why="PC not seen (PC_RUNNER_VU=${SEEN:-unset})"
+              fi ;;
+          esac
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
+          echo "Runner: \`$runner\` — $why" >> "$GITHUB_STEP_SUMMARY"
