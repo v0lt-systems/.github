@@ -1,26 +1,25 @@
 name: Runner routing
 
-# Picks the runner for the calling workflow's jobs: the RTX 4090's
-# self-hosted `pc-gaming` runners by default, GitHub-hosted `ubuntu-latest`
-# as the fallback when the PC is off.
+# Picks the runner for the calling workflow's jobs, in Vincent's order
+# (2026-11-01): the RTX 4090's `pc-gaming` runners first, qcm1250 when the PC
+# is full or off, GitHub-hosted `ubuntu-latest` only when both are off.
 #
-# The decision no longer needs a GitHub-hosted job: this job itself runs on
-# the PC unless the variable CI_RUNNER (org or repo, JSON for runs-on, e.g.
-# "ubuntu-latest") says otherwise. CI_RUNNER is the one switch shared by
-# every v0lt-systems repo; set it to "ubuntu-latest" when the PC is off.
+# The decision is Master of Puppets' (GET /api/ingest/runner-route,
+# masterofpuppets docs/runners.md "Runner routing"): it reads GitHub's list of
+# the organization's runners (online, busy) and the jobs already queued, so
+# "full" means every runner busy, not a guess. When MoP can't answer, this job
+# decides alone: CI_RUNNER if set, else the PC when this job itself ran on a
+# self-hosted runner or the PC's heartbeat (PC_RUNNER_VU) is fresher than
+# 3 minutes, else ubuntu-latest.
 #
-# When this job runs GitHub-hosted, the repo variable PC_RUNNER_VU still
-# decides: a UTC ISO-8601 timestamp that a scheduled task on the PC rewrites
-# every minute while its runners are online. Fresher than 3 minutes sends the
-# jobs back to the PC.
+# This job runs on any self-hosted Linux runner of the organization (the PC
+# or qcm1250, whichever is free), so it never waits behind a full PC and needs
+# no hosted minute. When both are off, Master of Puppets sets the organization
+# variable CI_RUNNER (qcm1250 while only the PC is off, "ubuntu-latest" when
+# both are), and this job follows it.
 #
-# The repo variable RUNNER_FORCE overrides everything: `pc` or `github`.
-#
-# This is the organization's shared copy, called by famille,
-# hillvalleyrealestate and lewine. commodity keeps its own identical copy
-# for now: its evidence manifests and ORCHESTRATOR_CORE.md cite that file by
-# line. A called workflow reads the caller's variables, so PC_RUNNER_VU and
-# RUNNER_FORCE stay per repository (heartbeat.ps1 keeps its repo list).
+# The repo variable RUNNER_FORCE overrides everything: `pc`, `qcm1250` or
+# `github`. MOP_ROUTE_URL (org or repo variable) points at another MoP.
 #
 # Usage in a workflow of any v0lt-systems repository:
 #   jobs:
@@ -41,35 +40,57 @@ permissions: {}
 
 jobs:
   choose:
-    runs-on: ${{ vars.RUNNER_FORCE == 'github' && 'ubuntu-latest' || vars.RUNNER_FORCE == 'pc' && fromJSON('["self-hosted","pc-gaming"]') || fromJSON(vars.CI_RUNNER || '["self-hosted","pc-gaming"]') }}
+    runs-on: ${{ vars.RUNNER_FORCE == 'github' && 'ubuntu-latest' || vars.RUNNER_FORCE == 'pc' && fromJSON('["self-hosted","pc-gaming"]') || vars.RUNNER_FORCE == 'qcm1250' && fromJSON('["self-hosted","qcm1250"]') || fromJSON(vars.CI_RUNNER || '["self-hosted","Linux"]') }}
     timeout-minutes: 2
     outputs:
       runner: ${{ steps.choice.outputs.runner }}
     steps:
       - id: choice
         env:
+          ROUTE_URL: ${{ vars.MOP_ROUTE_URL || 'https://masterofpuppets.vincent-berthelemy.workers.dev/api/ingest/runner-route' }}
+          OWNER: ${{ github.repository_owner }}
+          SELF: ${{ runner.name }}
           SEEN: ${{ vars.PC_RUNNER_VU }}
           FORCE: ${{ vars.RUNNER_FORCE }}
           CI_RUNNER: ${{ vars.CI_RUNNER }}
           WHERE: ${{ runner.environment }}
         run: |
           pc='["self-hosted","pc-gaming"]'
+          qcm='["self-hosted","qcm1250"]'
           hosted='"ubuntu-latest"'
-          age=''
-          if [ -n "$SEEN" ]; then
-            age=$(( $(date -u +%s) - $(date -u -d "$SEEN" +%s) )) || age=''
-          fi
+          runner=''
+          why=''
           case "$FORCE" in
             pc) runner=$pc; why="RUNNER_FORCE=pc" ;;
+            qcm1250) runner=$qcm; why="RUNNER_FORCE=qcm1250" ;;
             github) runner=$hosted; why="RUNNER_FORCE=github" ;;
-            *)
-              if [ "$WHERE" != github-hosted ]; then
-                runner=$pc; why="routing ran on the PC"
-              elif [ -n "$age" ] && [ "$age" -lt 180 ]; then
-                runner=$pc; why="PC seen ${age}s ago"
-              else
-                runner=${CI_RUNNER:-$hosted}; why="PC not seen (PC_RUNNER_VU=${SEEN:-unset})"
-              fi ;;
           esac
+          if [ -z "$runner" ]; then
+            answer=$(curl -fsS --max-time 10 --get "$ROUTE_URL" \
+              --data-urlencode "owner=$OWNER" --data-urlencode "self=$SELF" --data-urlencode "format=text" 2>/dev/null) || answer=''
+            said=$(printf '%s\n' "$answer" | sed -n 's/^runner=//p' | head -n 1)
+            # Only the three known values are taken: anything else is not an answer.
+            case "$said" in
+              "$pc"|"$qcm"|"$hosted")
+                runner=$said
+                why="Master of Puppets: $(printf '%s\n' "$answer" | sed -n 's/^why=//p' | head -n 1)" ;;
+            esac
+          fi
+          if [ -z "$runner" ]; then
+            age=''
+            if [ -n "$SEEN" ]; then
+              age=$(( $(date -u +%s) - $(date -u -d "$SEEN" +%s) )) || age=''
+            fi
+            if [ -n "$CI_RUNNER" ]; then
+              runner=$CI_RUNNER; why="Master of Puppets did not answer; CI_RUNNER"
+            elif [ "$WHERE" != github-hosted ]; then
+              runner=$pc; why="Master of Puppets did not answer; routing ran self-hosted"
+            elif [ -n "$age" ] && [ "$age" -lt 180 ]; then
+              runner=$pc; why="Master of Puppets did not answer; PC seen ${age}s ago"
+            else
+              runner=$hosted; why="Master of Puppets did not answer; PC not seen (PC_RUNNER_VU=${SEEN:-unset})"
+            fi
+          fi
           echo "runner=$runner" >> "$GITHUB_OUTPUT"
-          echo "Runner: \`$runner\` — $why" >> "$GITHUB_STEP_SUMMARY"
+          echo "Runner: \`$runner\` - $why" >> "$GITHUB_STEP_SUMMARY"
+          echo "Runner: $runner - $why"
