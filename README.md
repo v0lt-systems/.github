@@ -6,7 +6,7 @@ Shared defaults for every repository of the V0LT Systems organization.
 |---|---|
 | `profile/README.md` | The organization's public profile page. |
 | `SECURITY.md` | Default security policy for repositories that have none. |
-| `.github/workflows/runner-routing.yml` | Reusable workflow: picks the self-hosted `pc-gaming` runners, or `ubuntu-latest` when the PC is off. |
+| `.github/workflows/runner-routing.yml` | Reusable workflow: picks the PC's `pc-gaming` runners, qcm1250 when the PC is full or off, `ubuntu-latest` only when both are off (asks Master of Puppets). |
 | `.github/workflows/dependabot-automerge.yml` | Reusable workflow, opt-in: auto-merges Dependabot patch and minor updates once required checks pass. |
 | `workflow-templates/` | Templates offered under **Actions → New workflow** in every repository. |
 
@@ -23,9 +23,9 @@ jobs:
     runs-on: ${{ fromJSON(needs.routing.outputs.runner) }}
 ```
 
-The switches are the organization variable `CI_RUNNER` (JSON for `runs-on`; set it to `"ubuntu-latest"` while the PC is off), the repository variable `RUNNER_FORCE` (`pc` or `github`) and `PC_RUNNER_VU`, the heartbeat the PC rewrites every minute. The header of the workflow explains the order.
+Each run goes to the PC (`pc-gaming`) while it has a free runner, to qcm1250 when the PC is full or off, and to `ubuntu-latest` only when both are off (Vincent, 2026-11-01). Master of Puppets decides from GitHub's live runner list (`GET /api/ingest/runner-route`, masterofpuppets `docs/runners.md`). The routing job itself runs on any self-hosted Linux runner, or where the organization variable `CI_RUNNER` says: Master of Puppets sets it to qcm1250 while the PC is off and to `"ubuntu-latest"` only when both are. When Master of Puppets does not answer, the job falls back on `CI_RUNNER`, then the PC. The repository variable `RUNNER_FORCE` (`pc`, `qcm1250` or `github`) overrides everything.
 
-famille, hillvalleyrealestate and lewine call this copy. commodity still carries its own identical one, because its evidence manifests cite that file by line. A called workflow reads the caller's variables, so `PC_RUNNER_VU` and `RUNNER_FORCE` stay per repository: a repository that adopts this workflow must be added to the PC heartbeat's list.
+Every repository of the organization calls this copy (commodity since its D50). `PC_RUNNER_VU`, the heartbeat the PC rewrites every minute, is only the last resort now.
 
 ## Dependabot auto-merge (opt-in)
 
