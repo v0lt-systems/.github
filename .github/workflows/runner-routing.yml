@@ -18,6 +18,11 @@ name: Runner routing
 # variable CI_RUNNER (qcm1250 while only the PC is off, "ubuntu-latest" when
 # both are), and this job follows it.
 #
+# A caller whose jobs can run on macOS (no Docker, nothing Linux-only) passes
+# `mac_ok: true` (Vincent, 2026-11-03): when the PC and qcm1250 are both full
+# or off, Master of Puppets may then send the run to a free Mac (m1-max,
+# m5-pro) as ["self-hosted","macOS"]. Without it, a run never goes to a Mac.
+#
 # The repo variable RUNNER_FORCE overrides everything: `pc`, `qcm1250` or
 # `github`. MOP_ROUTE_URL (org or repo variable) points at another MoP.
 #
@@ -25,12 +30,18 @@ name: Runner routing
 #   jobs:
 #     routing:
 #       uses: v0lt-systems/.github/.github/workflows/runner-routing.yml@main
+#       # with: { mac_ok: true }   # only if every job below can run on macOS
 #     my-job:
 #       needs: routing
 #       runs-on: ${{ fromJSON(needs.routing.outputs.runner) }}
 
 on:
   workflow_call:
+    inputs:
+      mac_ok:
+        description: The caller's jobs can run on macOS, so a free Mac may take the run when the PC and qcm1250 are full
+        type: boolean
+        default: false
     outputs:
       runner:
         description: JSON runner spec for runs-on
@@ -54,9 +65,11 @@ jobs:
           FORCE: ${{ vars.RUNNER_FORCE }}
           CI_RUNNER: ${{ vars.CI_RUNNER }}
           WHERE: ${{ runner.environment }}
+          MAC_OK: ${{ inputs.mac_ok && '1' || '0' }}
         run: |
           pc='["self-hosted","pc-gaming"]'
           qcm='["self-hosted","qcm1250"]'
+          mac='["self-hosted","macOS"]'
           hosted='"ubuntu-latest"'
           runner=''
           why=''
@@ -67,11 +80,13 @@ jobs:
           esac
           if [ -z "$runner" ]; then
             answer=$(curl -fsS --max-time 10 --get "$ROUTE_URL" \
-              --data-urlencode "owner=$OWNER" --data-urlencode "self=$SELF" --data-urlencode "format=text" 2>/dev/null) || answer=''
+              --data-urlencode "owner=$OWNER" --data-urlencode "self=$SELF" --data-urlencode "mac=$MAC_OK" --data-urlencode "format=text" 2>/dev/null) || answer=''
             said=$(printf '%s\n' "$answer" | sed -n 's/^runner=//p' | head -n 1)
-            # Only the three known values are taken: anything else is not an answer.
+            # Only the known values are taken: anything else is not an answer.
+            # A Mac only for a caller that said mac_ok.
+            [ "$MAC_OK" = 1 ] || [ "$said" != "$mac" ] || said=''
             case "$said" in
-              "$pc"|"$qcm"|"$hosted")
+              "$pc"|"$qcm"|"$mac"|"$hosted")
                 runner=$said
                 why="Master of Puppets: $(printf '%s\n' "$answer" | sed -n 's/^why=//p' | head -n 1)" ;;
             esac
