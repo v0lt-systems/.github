@@ -9,8 +9,7 @@ name: Runner routing
 # the organization's runners (online, busy) and the jobs already queued, so
 # "full" means every runner busy, not a guess. When MoP can't answer, this job
 # decides alone: CI_RUNNER if set, else the PC when this job itself ran on a
-# self-hosted runner or the PC's heartbeat (PC_RUNNER_VU) is fresher than
-# 3 minutes, else ubuntu-latest.
+# self-hosted runner, else ubuntu-latest.
 #
 # This job runs on any self-hosted Linux runner of the organization (the PC
 # or qcm1250, whichever is free), so it never waits behind a full PC and needs
@@ -61,7 +60,6 @@ jobs:
           ROUTE_URL: ${{ vars.MOP_ROUTE_URL || 'https://masterofpuppets.vincent-berthelemy.workers.dev/api/ingest/runner-route' }}
           OWNER: ${{ github.repository_owner }}
           SELF: ${{ runner.name }}
-          SEEN: ${{ vars.PC_RUNNER_VU }}
           FORCE: ${{ vars.RUNNER_FORCE }}
           CI_RUNNER: ${{ vars.CI_RUNNER }}
           WHERE: ${{ runner.environment }}
@@ -92,18 +90,12 @@ jobs:
             esac
           fi
           if [ -z "$runner" ]; then
-            age=''
-            if [ -n "$SEEN" ]; then
-              age=$(( $(date -u +%s) - $(date -u -d "$SEEN" +%s) )) || age=''
-            fi
             if [ -n "$CI_RUNNER" ]; then
               runner=$CI_RUNNER; why="Master of Puppets did not answer; CI_RUNNER"
             elif [ "$WHERE" != github-hosted ]; then
               runner=$pc; why="Master of Puppets did not answer; routing ran self-hosted"
-            elif [ -n "$age" ] && [ "$age" -lt 180 ]; then
-              runner=$pc; why="Master of Puppets did not answer; PC seen ${age}s ago"
             else
-              runner=$hosted; why="Master of Puppets did not answer; PC not seen (PC_RUNNER_VU=${SEEN:-unset})"
+              runner=$hosted; why="Master of Puppets did not answer; routing ran GitHub-hosted"
             fi
           fi
           echo "runner=$runner" >> "$GITHUB_OUTPUT"
