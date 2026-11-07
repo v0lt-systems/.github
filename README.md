@@ -23,9 +23,9 @@ jobs:
     runs-on: ${{ fromJSON(needs.routing.outputs.runner) }}
 ```
 
-Each run goes to the PC (`pc-gaming`) while it has a free runner, to qcm1250 when the PC is full or off, and to `ubuntu-latest` only when both are off (Vincent, 2026-11-01). Master of Puppets decides from GitHub's live runner list (`GET /api/ingest/runner-route`, masterofpuppets `docs/runners.md`). The routing job itself runs on any self-hosted Linux runner, or where the organization variable `CI_RUNNER` says: Master of Puppets sets it to qcm1250 while the PC is off and to `"ubuntu-latest"` only when both are. When Master of Puppets does not answer, the job falls back on `CI_RUNNER`, then the PC. The repository variable `RUNNER_FORCE` (`pc`, `qcm1250` or `github`) overrides everything.
+Each run goes to the PC (`pc-gaming`) while it has a free runner, to qcm1250 when the PC is full or off, and to `ubuntu-latest` only when both are off (Vincent, 2026-11-01). Master of Puppets decides from GitHub's live runner list (`GET /api/ingest/runner-route`, masterofpuppets `docs/runners.md`). The routing job itself runs on any self-hosted Linux runner, or where the organization variable `CI_RUNNER` says: Master of Puppets sets it to qcm1250 while the PC is off and to `"ubuntu-latest"` only when both are. When Master of Puppets does not answer, the job falls back on `CI_RUNNER`, then the PC if the routing job itself ran self-hosted, else `ubuntu-latest`. The repository variable `RUNNER_FORCE` (`pc`, `qcm1250` or `github`) overrides everything.
 
-Every repository of the organization calls this copy (commodity since its D50). `PC_RUNNER_VU`, the heartbeat the PC rewrites every minute, is only the last resort now.
+Every repository of the organization calls this copy (commodity since its D50).
 
 ## Dependabot auto-merge (opt-in)
 
