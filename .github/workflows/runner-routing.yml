@@ -80,14 +80,15 @@ jobs:
             answer=$(curl -fsS --max-time 10 --get "$ROUTE_URL" \
               --data-urlencode "owner=$OWNER" --data-urlencode "self=$SELF" --data-urlencode "mac=$MAC_OK" --data-urlencode "format=text" 2>/dev/null) || answer=''
             said=$(printf '%s\n' "$answer" | sed -n 's/^runner=//p' | head -n 1)
-            # Only the known values are taken: anything else is not an answer.
-            # A Mac only for a caller that said mac_ok.
-            [ "$MAC_OK" = 1 ] || [ "$said" != "$mac" ] || said=''
-            case "$said" in
-              "$pc"|"$qcm"|"$mac"|"$hosted")
-                runner=$said
-                why="Master of Puppets: $(printf '%s\n' "$answer" | sed -n 's/^why=//p' | head -n 1)" ;;
-            esac
+            # Answers come from Master of Puppets' RUNS_ON (apps/worker/src/services/runner-route.ts).
+            # Any self-hosted label array is accepted, so a new machine label
+            # (m5-pro, mac-studio, Linux...) can't be silently dropped again.
+            # A Mac (any answer naming macOS) only for a caller that said mac_ok.
+            case "$said" in *'"macOS"'*) [ "$MAC_OK" = 1 ] || said='' ;; esac
+            if [ "$said" = "$hosted" ] || printf '%s' "$said" | grep -Eq '^\["self-hosted"(,"[A-Za-z0-9._-]+")*\]$'; then
+              runner=$said
+              why="Master of Puppets: $(printf '%s\n' "$answer" | sed -n 's/^why=//p' | head -n 1)"
+            fi
           fi
           if [ -z "$runner" ]; then
             if [ -n "$CI_RUNNER" ]; then
