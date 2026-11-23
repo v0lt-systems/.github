@@ -2,28 +2,31 @@ name: Runner routing
 
 # Picks the runner for the calling workflow's jobs, in Vincent's order
 # (2026-11-01): the RTX 4090's `pc-gaming` runners first, qcm1250 when the PC
-# is full or off, GitHub-hosted `ubuntu-latest` only when both are off.
+# is full or off. Never GitHub-hosted (Vincent, 2026-11-23: "I want to use my
+# self hosted runners"): with every machine off, the run queues for
+# ["self-hosted","Linux"] and starts on the first PC or qcm1250 runner back.
 #
 # The decision is Master of Puppets' (GET /api/ingest/runner-route,
 # masterofpuppets docs/runners.md "Runner routing"): it reads GitHub's list of
 # the organization's runners (online, busy) and the jobs already queued, so
 # "full" means every runner busy, not a guess. When MoP can't answer, this job
 # decides alone: CI_RUNNER if set, else the PC when this job itself ran on a
-# self-hosted runner, else ubuntu-latest.
+# self-hosted runner, else any self-hosted Linux runner.
 #
 # This job runs on any self-hosted Linux runner of the organization (the PC
 # or qcm1250, whichever is free), so it never waits behind a full PC and needs
 # no hosted minute. When both are off, Master of Puppets sets the organization
-# variable CI_RUNNER (qcm1250 while only the PC is off, "ubuntu-latest" when
-# both are), and this job follows it.
+# variable CI_RUNNER (qcm1250 while only the PC is off, ["self-hosted","Linux"]
+# when both are), and this job follows it.
 #
 # A caller whose jobs can run on macOS (no Docker, nothing Linux-only) passes
 # `mac_ok: true` (Vincent, 2026-11-03): when the PC and qcm1250 are both full
 # or off, Master of Puppets may then send the run to a free Mac (m1-max,
-# m5-pro) as ["self-hosted","macOS"]. Without it, a run never goes to a Mac.
+# m5-pro) as ["self-hosted","macOS","m5-pro"] or ["self-hosted","macOS","mac-studio"].
+# Without it, a run never goes to a Mac.
 #
-# The repo variable RUNNER_FORCE overrides everything: `pc`, `qcm1250` or
-# `github`. MOP_ROUTE_URL (org or repo variable) points at another MoP.
+# The repo variable RUNNER_FORCE overrides everything: `pc` or `qcm1250`
+# (`github` is no longer honoured). MOP_ROUTE_URL (org or repo variable) points at another MoP.
 #
 # Usage in a workflow of any v0lt-systems repository:
 #   jobs:
@@ -50,7 +53,7 @@ permissions: {}
 
 jobs:
   choose:
-    runs-on: ${{ vars.RUNNER_FORCE == 'github' && 'ubuntu-latest' || vars.RUNNER_FORCE == 'pc' && fromJSON('["self-hosted","pc-gaming"]') || vars.RUNNER_FORCE == 'qcm1250' && fromJSON('["self-hosted","qcm1250"]') || fromJSON(vars.CI_RUNNER || '["self-hosted","Linux"]') }}
+    runs-on: ${{ vars.RUNNER_FORCE == 'pc' && fromJSON('["self-hosted","pc-gaming"]') || vars.RUNNER_FORCE == 'qcm1250' && fromJSON('["self-hosted","qcm1250"]') || fromJSON(vars.CI_RUNNER || '["self-hosted","Linux"]') }}
     timeout-minutes: 2
     outputs:
       runner: ${{ steps.choice.outputs.runner }}
@@ -67,14 +70,12 @@ jobs:
         run: |
           pc='["self-hosted","pc-gaming"]'
           qcm='["self-hosted","qcm1250"]'
-          mac='["self-hosted","macOS"]'
-          hosted='"ubuntu-latest"'
+          linux='["self-hosted","Linux"]'
           runner=''
           why=''
           case "$FORCE" in
             pc) runner=$pc; why="RUNNER_FORCE=pc" ;;
             qcm1250) runner=$qcm; why="RUNNER_FORCE=qcm1250" ;;
-            github) runner=$hosted; why="RUNNER_FORCE=github" ;;
           esac
           if [ -z "$runner" ]; then
             answer=$(curl -fsS --max-time 10 --get "$ROUTE_URL" \
@@ -85,18 +86,20 @@ jobs:
             # (m5-pro, mac-studio, Linux...) can't be silently dropped again.
             # A Mac (any answer naming macOS) only for a caller that said mac_ok.
             case "$said" in *'"macOS"'*) [ "$MAC_OK" = 1 ] || said='' ;; esac
-            if [ "$said" = "$hosted" ] || printf '%s' "$said" | grep -Eq '^\["self-hosted"(,"[A-Za-z0-9._-]+")*\]$'; then
+            # Never GitHub-hosted (Vincent, 2026-11-23): only self-hosted label arrays.
+            if printf '%s' "$said" | grep -Eq '^\["self-hosted"(,"[A-Za-z0-9._-]+")*\]$'; then
               runner=$said
               why="Master of Puppets: $(printf '%s\n' "$answer" | sed -n 's/^why=//p' | head -n 1)"
             fi
           fi
           if [ -z "$runner" ]; then
-            if [ -n "$CI_RUNNER" ]; then
+            # Never GitHub-hosted: a hosted CI_RUNNER is not followed either.
+            if [ -n "$CI_RUNNER" ] && printf '%s' "$CI_RUNNER" | grep -q '"self-hosted"'; then
               runner=$CI_RUNNER; why="Master of Puppets did not answer; CI_RUNNER"
             elif [ "$WHERE" != github-hosted ]; then
               runner=$pc; why="Master of Puppets did not answer; routing ran self-hosted"
             else
-              runner=$hosted; why="Master of Puppets did not answer; routing ran GitHub-hosted"
+              runner=$linux; why="Master of Puppets did not answer; queued for any self-hosted Linux runner"
             fi
           fi
           echo "runner=$runner" >> "$GITHUB_OUTPUT"

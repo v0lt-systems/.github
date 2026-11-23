@@ -24,7 +24,8 @@ permissions: {}
 jobs:
   automerge:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ${{ vars.RUNNER_FORCE == 'github' && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '["self-hosted","pc-gaming"]') }}
+    # Self-hosted only (Vincent, 2026-11-23).
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '["self-hosted","Linux"]') }}
     timeout-minutes: 5
     permissions:
       contents: write

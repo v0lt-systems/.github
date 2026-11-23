@@ -1,7 +1,7 @@
 name: CI
 
-# V0LT Systems CI skeleton: jobs on the PC's self-hosted runners, GitHub-hosted
-# when it is off (runner-routing), and one `ci-ok` check that sums them up.
+# V0LT Systems CI skeleton: jobs on the PC's self-hosted runners, qcm1250 when
+# it is off, never GitHub-hosted (runner-routing), and one `ci-ok` check.
 # The organization ruleset "Default branch: ci-ok green, via pull request"
 # requires `ci-ok`, so keep that job name and list every gate under `needs`.
 
@@ -36,7 +36,7 @@ jobs:
     name: ci-ok
     if: always()
     needs: [routing, test]
-    runs-on: ${{ fromJSON(needs.routing.outputs.runner || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(needs.routing.outputs.runner || vars.CI_RUNNER || '["self-hosted","Linux"]') }}
     timeout-minutes: 2
     steps:
       - name: Every gate passed
